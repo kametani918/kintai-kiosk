@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>打刻端末</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; }
+  body { font-family: -apple-system, "Hiragino Sans", sans-serif; background: #111827; color: #f9fafb;
+         min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 16px; }
+  #clock { text-align: center; margin: 8px 0 4px; }
+  #clock .date { font-size: 20px; color: #9ca3af; }
+  #clock .time { font-size: 56px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #modes { display: flex; gap: 10px; margin: 12px 0; }
+  #modes button { font-size: 18px; padding: 12px 22px; border-radius: 12px; border: 2px solid #374151;
+                  background: #1f2937; color: #f9fafb; }
+  #modes button.on { border-color: #34d399; background: #064e3b; }
+  #reader { width: min(420px, 92vw); border-radius: 16px; overflow: hidden; background: #000; }
+  #hint { color: #9ca3af; margin: 12px 0; font-size: 16px; }
+  #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+             flex-direction: column; gap: 8px; background: rgba(6,78,59,.96); z-index: 10; text-align: center; }
+  #overlay.err { background: rgba(127,29,29,.96); }
+  #overlay .big { font-size: 44px; font-weight: 700; }
+  #overlay .sub { font-size: 28px; }
+  details { margin-top: 16px; width: min(420px, 92vw); }
+  summary { color: #9ca3af; font-size: 15px; }
+  .pinform { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+  .pinform input { font-size: 20px; padding: 12px; border-radius: 10px; border: 1px solid #374151;
+                   background: #1f2937; color: #f9fafb; }
+  .pinform button { font-size: 20px; padding: 14px; border-radius: 10px; border: none;
+                    background: #2563eb; color: #fff; }
+</style>
+</head>
+<body>
+  <div id="clock"><div class="date"></div><div class="time"></div></div>
+  <div id="modes">
+    <button data-mode="自動" class="on">出勤 / 退勤</button>
+    <button data-mode="休憩入">休憩入</button>
+    <button data-mode="休憩戻">休憩戻</button>
+  </div>
+  <div id="reader"></div>
+  <div id="hint">スマホのバッジQRをかざしてください</div>
+
+  <details>
+    <summary>スマホを忘れた場合（PIN打刻）</summary>
+    <div class="pinform">
+      <input id="pinEmp" placeholder="社員ID（例: E001）" autocapitalize="characters">
+      <input id="pinPin" placeholder="PIN（4桁）" type="password" inputmode="numeric">
+      <button onclick="pinPunch()">この内容で打刻</button>
+    </div>
+  </details>
+
+  <div id="overlay"><div class="big"></div><div class="sub"></div></div>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxVFIvKZgaXVoqeCTPXbjlFiFaBW4ErgHKz71Grzbm7gL_jtRzd3WaQh4MqL2h6NKMF/exec';
+  const CAMERA = 'user'; // iPad前面カメラ。背面にする場合は 'environment'
+
+  let mode = '自動';
+  let busy = false;
+  let lastText = '', lastAt = 0;
+
+  document.querySelectorAll('#modes button').forEach(b => {
+    b.onclick = () => {
+      mode = b.dataset.mode;
+      document.querySelectorAll('#modes button').forEach(x => x.classList.toggle('on', x === b));
+    };
+  });
+
+  function tickClock() {
+    const d = new Date();
+    const w = ['日','月','火','水','木','金','土'][d.getDay()];
+    document.querySelector('#clock .date').textContent =
+      d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日（' + w + '）';
+    document.querySelector('#clock .time').textContent =
+      String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
+  }
+  setInterval(tickClock, 1000); tickClock();
+
+  function showResult(ok, big, sub) {
+    const ov = document.getElementById('overlay');
+    ov.className = ok ? '' : 'err';
+    ov.querySelector('.big').textContent = big;
+    ov.querySelector('.sub').textContent = sub;
+    ov.style.display = 'flex';
+    setTimeout(() => { ov.style.display = 'none'; busy = false; }, 2600);
+  }
+
+  async function send(payload) {
+    busy = true;
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action: 'punch', mode: mode }, payload)),
+      });
+      const j = await res.json();
+      if (j.ok) {
+        showResult(true, j.name + ' さん', j.type + ' ' + j.time + ' を記録しました');
+        if (mode !== '自動') { document.querySelector('#modes button').click(); }
+      } else {
+        showResult(false, '打刻できません', j.message);
+      }
+    } catch (e) {
+      showResult(false, '通信エラー', 'ネット接続を確認してください');
+    }
+  }
+
+  function onScan(text) {
+    if (busy) return;
+    const now = Date.now();
+    if (text === lastText && now - lastAt < 4000) return;
+    lastText = text; lastAt = now;
+    const p = text.split('|');
+    if (p[0] !== 'KQ1' || p.length !== 3) return;
+    send({ empId: p[1], token: p[2] });
+  }
+
+  function pinPunch() {
+    const empId = document.getElementById('pinEmp').value.trim();
+    const pin = document.getElementById('pinPin').value.trim();
+    if (!empId || !pin) return;
+    document.getElementById('pinPin').value = '';
+    send({ empId: empId, pin: pin });
+  }
+
+  new Html5Qrcode('reader')
+    .start({ facingMode: CAMERA }, { fps: 8, qrbox: 240 }, onScan)
+    .catch(err => {
+      document.getElementById('hint').textContent =
+        'カメラを起動できませんでした。ブラウザのカメラ許可を確認してください（' + err + '）';
+    });
+</script>
+</body>
+</html>
