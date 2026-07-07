@@ -12,6 +12,187 @@
   #clock .date { font-size: 20px; color: #9ca3af; }
   #clock .time { font-size: 56px; font-weight: 700; font-variant-numeric: tabular-nums; }
   #modes { display: flex; gap: 10px; margin: 12px 0; }
+  #modes button { font-size: 20px; font-weight: 700; padding: 14px 24px; border-radius: 12px;
+                  border: 2px solid #374151; background: #1f2937; color: #9ca3af; }
+  #modes button.on { color: #fff; }
+  #modes button[data-mode="出勤"].on { border-color: #34d399; background: #065f46; }
+  #modes button[data-mode="退勤"].on { border-color: #60a5fa; background: #1e40af; }
+  #modes button[data-mode="休憩入"].on, #modes button[data-mode="休憩戻"].on
+                { border-color: #fbbf24; background: #92400e; }
+  #reader { width: min(420px, 92vw); border-radius: 16px; overflow: hidden; background: #000; }
+  #hint { color: #9ca3af; margin: 12px 0; font-size: 16px; }
+  #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+             flex-direction: column; gap: 8px; z-index: 10; text-align: center; }
+  #overlay.in { background: rgba(6,95,70,.97); }
+  #overlay.out { background: rgba(30,64,175,.97); }
+  #overlay.brk { background: rgba(146,64,14,.97); }
+  #overlay.err { background: rgba(127,29,29,.96); }
+  #overlay .icon { font-size: 100px; font-weight: 900; line-height: 1; }
+  #overlay .big { font-size: 72px; font-weight: 700; }
+  #overlay .sub { font-size: 26px; color: #e5e7eb; }
+  details { margin-top: 16px; width: min(420px, 92vw); }
+  summary { color: #9ca3af; font-size: 15px; }
+  .pinform { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+  .pinform input { font-size: 20px; padding: 12px; border-radius: 10px; border: 1px solid #374151;
+                   background: #1f2937; color: #f9fafb; }
+  .pinform button { font-size: 20px; padding: 14px; border-radius: 10px; border: none;
+                    background: #2563eb; color: #fff; }
+</style>
+</head>
+<body>
+  <div id="clock"><div class="date"></div><div class="time"></div></div>
+  <div id="modes">
+    <button data-mode="出勤" class="on">出勤</button>
+    <button data-mode="退勤">退勤</button>
+    <button data-mode="休憩入">休憩入</button>
+    <button data-mode="休憩戻">休憩戻</button>
+  </div>
+  <div id="reader"></div>
+  <div id="hint">ボタンで種別を選び、スマホのバッジQRをかざしてください</div>
+
+  <details>
+    <summary>スマホを忘れた場合（PIN打刻）</summary>
+    <div class="pinform">
+      <input id="pinEmp" placeholder="社員ID（例: E001）" autocapitalize="characters">
+      <input id="pinPin" placeholder="PIN（4桁）" type="password" inputmode="numeric">
+      <button onclick="pinPunch()">この内容で打刻</button>
+    </div>
+  </details>
+
+  <div id="overlay"><div class="icon"></div><div class="big"></div><div class="sub"></div></div>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxVFIvKZgaXVoqeCTPXbjlFiFaBW4ErgHKz71Grzbm7gL_jtRzd3WaQh4MqL2h6NKMF/exec';
+  const CAMERA = 'user';            // iPad前面カメラ。背面にする場合は 'environment'
+  const SAME_EMP_COOLDOWN_MS = 20000; // 同一社員の連続読取りを無視する時間
+
+  let mode = '出勤';
+  let busy = false;
+  let lastEmpId = '', lastEmpAt = 0;
+
+  document.querySelectorAll('#modes button').forEach(b => {
+    b.onclick = () => {
+      mode = b.dataset.mode;
+      document.querySelectorAll('#modes button').forEach(x => x.classList.toggle('on', x === b));
+    };
+  });
+
+  function tickClock() {
+    const d = new Date();
+    const w = ['日','月','火','水','木','金','土'][d.getDay()];
+    document.querySelector('#clock .date').textContent =
+      d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日（' + w + '）';
+    document.querySelector('#clock .time').textContent =
+      String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0');
+  }
+  setInterval(tickClock, 1000); tickClock();
+
+  // ---- 打刻音（Web Audio・端末に一度タッチした後から鳴る） ----
+  let audioCtx = null;
+  function unlockAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  document.addEventListener('pointerdown', unlockAudio);
+
+  function chime(freqs, wave, step, dur) {
+    if (!audioCtx || audioCtx.state !== 'running') return;
+    const t0 = audioCtx.currentTime;
+    freqs.forEach((f, i) => {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = wave; o.frequency.value = f;
+      const t = t0 + i * step;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.3, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t); o.stop(t + dur + 0.05);
+    });
+  }
+  const SOUND = {
+    in:  () => chime([659.25, 987.77], 'sine', 0.12, 0.35),      // 出勤: 上昇チャイム
+    out: () => chime([987.77, 659.25], 'sine', 0.12, 0.35),      // 退勤: 下降チャイム
+    brk: () => chime([783.99], 'sine', 0.1, 0.3),                // 休憩: 単音
+    err: () => chime([196, 196], 'square', 0.16, 0.14),          // エラー: ブザー
+  };
+
+  const ICON = { '出勤': '↑', '退勤': '↓', '休憩入': '⏸', '休憩戻': '▶' };
+  const KIND = { '出勤': 'in', '退勤': 'out', '休憩入': 'brk', '休憩戻': 'brk' };
+
+  function showResult(kind, icon, big, sub) {
+    (SOUND[kind] || SOUND.err)();
+    const ov = document.getElementById('overlay');
+    ov.className = kind;
+    ov.querySelector('.icon').textContent = icon;
+    ov.querySelector('.big').textContent = big;
+    ov.querySelector('.sub').textContent = sub;
+    ov.style.display = 'flex';
+    setTimeout(() => { ov.style.display = 'none'; busy = false; }, 2600);
+  }
+
+  async function send(payload) {
+    busy = true;
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action: 'punch', mode: mode }, payload)),
+      });
+      const j = await res.json();
+      if (j.ok) {
+        showResult(KIND[j.type] || 'in', ICON[j.type] || '', j.type, j.name + ' さん　' + j.time);
+      } else {
+        showResult('err', '×', '打刻できません', j.message);
+      }
+    } catch (e) {
+      showResult('err', '×', '通信エラー', 'ネット接続を確認してください');
+    }
+  }
+
+  function onScan(text) {
+    if (busy) return;
+    const p = text.split('|');
+    if (p[0] !== 'KQ1' || p.length !== 3) return;
+    const now = Date.now();
+    // QRのトークンは30秒で変わるため、社員IDで連続読取りをブロックする
+    if (p[1] === lastEmpId && now - lastEmpAt < SAME_EMP_COOLDOWN_MS) return;
+    lastEmpId = p[1]; lastEmpAt = now;
+    send({ empId: p[1], token: p[2] });
+  }
+
+  function pinPunch() {
+    const empId = document.getElementById('pinEmp').value.trim();
+    const pin = document.getElementById('pinPin').value.trim();
+    if (!empId || !pin) return;
+    document.getElementById('pinPin').value = '';
+    send({ empId: empId, pin: pin });
+  }
+
+  new Html5Qrcode('reader')
+    .start({ facingMode: CAMERA }, { fps: 8, qrbox: 240 }, onScan)
+    .catch(err => {
+      document.getElementById('hint').textContent =
+        'カメラを起動できませんでした。ブラウザのカメラ許可を確認してください（' + err + '）';
+    });
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>打刻端末</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; }
+  body { font-family: -apple-system, "Hiragino Sans", sans-serif; background: #111827; color: #f9fafb;
+         min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 16px; }
+  #clock { text-align: center; margin: 8px 0 4px; }
+  #clock .date { font-size: 20px; color: #9ca3af; }
+  #clock .time { font-size: 56px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #modes { display: flex; gap: 10px; margin: 12px 0; }
   #modes button { font-size: 18px; padding: 12px 22px; border-radius: 12px; border: 2px solid #374151;
                   background: #1f2937; color: #f9fafb; }
   #modes button.on { border-color: #34d399; background: #064e3b; }
