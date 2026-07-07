@@ -19,9 +19,12 @@
   #hint { color: #9ca3af; margin: 12px 0; font-size: 16px; }
   #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
              flex-direction: column; gap: 8px; background: rgba(6,78,59,.96); z-index: 10; text-align: center; }
+  #overlay.in { background: rgba(6,78,59,.97); }
+  #overlay.out { background: rgba(30,58,138,.97); }
   #overlay.err { background: rgba(127,29,29,.96); }
-  #overlay .big { font-size: 44px; font-weight: 700; }
-  #overlay .sub { font-size: 28px; }
+  #overlay .icon { font-size: 100px; font-weight: 900; line-height: 1; }
+  #overlay .big { font-size: 64px; font-weight: 700; }
+  #overlay .sub { font-size: 26px; color: #d1d5db; }
   details { margin-top: 16px; width: min(420px, 92vw); }
   summary { color: #9ca3af; font-size: 15px; }
   .pinform { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
@@ -50,7 +53,7 @@
     </div>
   </details>
 
-  <div id="overlay"><div class="big"></div><div class="sub"></div></div>
+  <div id="overlay"><div class="icon"></div><div class="big"></div><div class="sub"></div></div>
 
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
@@ -78,9 +81,13 @@
   }
   setInterval(tickClock, 1000); tickClock();
 
-  function showResult(ok, big, sub) {
+  const ICON = { '出勤': '↑', '退勤': '↓', '休憩入': '⏸', '休憩戻': '▶' };
+  const KIND = { '出勤': 'in', '退勤': 'out', '休憩入': 'out', '休憩戻': 'in' };
+
+  function showResult(kind, icon, big, sub) {
     const ov = document.getElementById('overlay');
-    ov.className = ok ? '' : 'err';
+    ov.className = kind;
+    ov.querySelector('.icon').textContent = icon;
     ov.querySelector('.big').textContent = big;
     ov.querySelector('.sub').textContent = sub;
     ov.style.display = 'flex';
@@ -97,13 +104,13 @@
       });
       const j = await res.json();
       if (j.ok) {
-        showResult(true, j.name + ' さん', j.type + ' ' + j.time + ' を記録しました');
+        showResult(KIND[j.type] || 'in', ICON[j.type] || '', j.type, j.name + ' さん　' + j.time);
         if (mode !== '自動') { document.querySelector('#modes button').click(); }
       } else {
-        showResult(false, '打刻できません', j.message);
+        showResult('err', '×', '打刻できません', j.message);
       }
     } catch (e) {
-      showResult(false, '通信エラー', 'ネット接続を確認してください');
+      showResult('err', '×', '通信エラー', 'ネット接続を確認してください');
     }
   }
 
