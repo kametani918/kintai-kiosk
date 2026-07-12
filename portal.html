@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>社員ポータル</title>
+<link rel="apple-touch-icon" href="portal-icon-180.png">
+<link rel="icon" type="image/png" sizes="512x512" href="portal-icon-512.png">
+<style>
+  body { font-family: -apple-system, "Hiragino Sans", sans-serif; background: #0f766e; color: #fff;
+         min-height: 100vh; margin: 0; display: flex; flex-direction: column;
+         align-items: center; justify-content: center; gap: 16px; }
+  a { color: #fff; font-size: 18px; }
+</style>
+</head>
+<body>
+<div>社員ポータルを開いています…</div>
+<a id="link" href="#">開かない場合はこちらをタップ</a>
+<script>
+  var URL = 'https://script.google.com/macros/s/AKfycbxVFIvKZgaXVoqeCTPXbjlFiFaBW4ErgHKz71Grzbm7gL_jtRzd3WaQh4MqL2h6NKMF/exec?mode=badge';
+  document.getElementById('link').href = URL;
+  location.replace(URL);
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "打刻端末",
+  "short_name": "打刻",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111827",
+  "theme_color": "#0f766e",
+  "icons": [
+    { "src": "kiosk-icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "kiosk-icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
