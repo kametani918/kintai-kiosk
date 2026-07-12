@@ -6,20 +6,24 @@
 <title>社員ポータル</title>
 <link rel="apple-touch-icon" href="portal-icon-180.png">
 <link rel="icon" type="image/png" sizes="512x512" href="portal-icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="社員ポータル">
 <style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, "Hiragino Sans", sans-serif; background: #0f766e; color: #fff;
-         min-height: 100vh; margin: 0; display: flex; flex-direction: column;
-         align-items: center; justify-content: center; gap: 16px; }
-  a { color: #fff; font-size: 18px; }
+         min-height: 100vh; display: flex; flex-direction: column;
+         align-items: center; justify-content: center; gap: 20px; padding: 24px; text-align: center; }
+  .icon { width: 96px; height: 96px; border-radius: 22px; background: #115e59;
+          display: flex; align-items: center; justify-content: center; font-size: 40px; }
+  h1 { font-size: 20px; font-weight: 600; }
+  button { font-size: 18px; font-weight: 700; padding: 16px 40px; border-radius: 999px; border: none;
+           background: #fff; color: #0f766e; }
 </style>
 </head>
 <body>
-<div>社員ポータルを開いています…</div>
-<a id="link" href="#">開かない場合はこちらをタップ</a>
-<script>
-  var URL = 'https://script.google.com/macros/s/AKfycbxVFIvKZgaXVoqeCTPXbjlFiFaBW4ErgHKz71Grzbm7gL_jtRzd3WaQh4MqL2h6NKMF/exec?mode=badge';
-  document.getElementById('link').href = URL;
-  location.replace(URL);
-</script>
+  <div class="icon">🪪</div>
+  <h1>社員ポータル</h1>
+  <button onclick="location.href='https://script.google.com/macros/s/AKfycbxVFIvKZgaXVoqeCTPXbjlFiFaBW4ErgHKz71Grzbm7gL_jtRzd3WaQh4MqL2h6NKMF/exec?mode=badge'">開く</button>
 </body>
 </html>
