@@ -177,12 +177,45 @@
     send({ empId: empId, pin: pin });
   }
 
-  new Html5Qrcode('reader')
-    .start({ facingMode: CAMERA }, { fps: 8, qrbox: 240 }, onScan)
-    .catch(err => {
-      document.getElementById('hint').textContent =
-        'カメラを起動できませんでした。ブラウザのカメラ許可を確認してください（' + err + '）';
-    });
+  // ---- カメラ監視・自動復帰（iPadの自動ロック解除後などにカメラが止まったままになる対策） ----
+  const WATCHDOG_MS = 15000;
+  const qr = new Html5Qrcode('reader');
+  let camStarting = false;
+
+  function startCamera() {
+    if (camStarting) return;
+    camStarting = true;
+    qr.start({ facingMode: CAMERA }, { fps: 8, qrbox: 240 }, onScan)
+      .then(() => {
+        document.getElementById('hint').textContent = 'ボタンで種別を選び、スマホのバッジQRをかざしてください';
+      })
+      .catch(err => {
+        document.getElementById('hint').textContent =
+          'カメラを起動できませんでした。ブラウザのカメラ許可を確認してください（' + err + '）';
+      })
+      .finally(() => { camStarting = false; });
+  }
+
+  async function restartCamera() {
+    if (camStarting) return;
+    try { await qr.stop(); } catch (e) {}
+    startCamera();
+  }
+
+  setInterval(() => {
+    if (camStarting) return;
+    const scanning = qr.getState() === 2; // 2 = SCANNING
+    const video = document.querySelector('#reader video');
+    const trackLive = video && video.srcObject &&
+      video.srcObject.getVideoTracks().some(t => t.readyState === 'live');
+    if (!scanning || !trackLive) restartCamera();
+  }, WATCHDOG_MS);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') restartCamera();
+  });
+
+  startCamera();
 </script>
 </body>
 </html>
