@@ -161,12 +161,13 @@
   function onScan(text) {
     if (busy) return;
     const p = text.split('|');
-    if (p[0] !== 'KQ1' || p.length !== 3) return;
+    if ((p[0] !== 'KQ1' && p[0] !== 'KQ2') || p.length !== 3) return;
     const now = Date.now();
     // QRのトークンは30秒で変わるため、社員IDで連続読取りをブロックする
     if (p[1] === lastEmpId && now - lastEmpAt < SAME_EMP_COOLDOWN_MS) return;
     lastEmpId = p[1]; lastEmpAt = now;
-    send({ empId: p[1], token: p[2] });
+    // KQ2=紙の社員証（固定QR）、KQ1=スマホの時限QR
+    send(p[0] === 'KQ2' ? { empId: p[1], cardToken: p[2] } : { empId: p[1], token: p[2] });
   }
 
   function pinPunch() {
