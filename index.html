@@ -78,6 +78,27 @@
   let busy = false;
   let lastEmpId = '', lastEmpAt = 0;
 
+  // ---- 位置情報（事業所から離れた場所での打刻を防ぐ） ----
+  let lastPos = null; // { lat, lng, t }
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(
+      pos => { lastPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, t: Date.now() }; },
+      () => {},
+      { enableHighAccuracy: false, maximumAge: 30000, timeout: 20000 }
+    );
+  }
+  function getPosition_() {
+    return new Promise(resolve => {
+      if (lastPos && Date.now() - lastPos.t < 60000) return resolve(lastPos);
+      if (!navigator.geolocation) return resolve(null);
+      navigator.geolocation.getCurrentPosition(
+        pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, t: Date.now() }),
+        () => resolve(null),
+        { enableHighAccuracy: false, timeout: 6000, maximumAge: 30000 }
+      );
+    });
+  }
+
   document.querySelectorAll('#modes button').forEach(b => {
     b.onclick = () => {
       mode = b.dataset.mode;
@@ -142,10 +163,15 @@
   async function send(payload) {
     busy = true;
     try {
+      const pos = await getPosition_();
+      if (!pos) {
+        showResult('err', '×', '位置情報エラー', '端末の位置情報を許可してください');
+        return;
+      }
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(Object.assign({ action: 'punch', mode: mode }, payload)),
+        body: JSON.stringify(Object.assign({ action: 'punch', mode: mode, lat: pos.lat, lng: pos.lng }, payload)),
       });
       const j = await res.json();
       if (j.ok) {
