@@ -125,7 +125,8 @@
   document.addEventListener('pointerdown', unlockAudio);
 
   function chime(freqs, wave, step, dur) {
-    if (!audioCtx || audioCtx.state !== 'running') return;
+    if (!audioCtx) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume(); // 位置情報の許可ダイアログ等で一時停止することがあるため毎回復帰を試みる
     const t0 = audioCtx.currentTime;
     freqs.forEach((f, i) => {
       const o = audioCtx.createOscillator();
